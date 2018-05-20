@@ -1,6 +1,7 @@
 #!/usr/bin/env escript
-% This is an end-to-end test for the chat server.
-% It's in Erlang because I don't know any better.
+%% This is an end-to-end test for the chat server.
+%% It's in Erlang because I don't know any better.
+-define(fail(F), begin io:format("~p~n", [F]), erlang:halt(1) end).
 
 main(_) ->
     ok = single_process_can_connect(),
@@ -50,7 +51,7 @@ all_other_connections_will_receive_chats() ->
                       ok = inet:setopts(P, [{active, true}]),
                       receive
                           {tcp, _, "> [UserA]: aaa\n> "} -> Parent ! ok
-                          after 1000 -> erlang:display({I, didnt_get_message})
+                          after 1000 -> ?fail({I, didnt_get_message})
                       end,
                       ok = gen_tcp:close(P)
               end,
@@ -74,5 +75,5 @@ type_message(P, Message) when is_list(Message) ->
 receive_oks(0) -> ok;
 receive_oks(N) ->
     receive  ok -> receive_oks(N-1)
-    after 100 -> error(not_enough_oks)
+    after 100 -> ?fail(not_enough_oks)
     end.

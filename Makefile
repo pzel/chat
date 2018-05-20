@@ -1,6 +1,6 @@
 .PHONY: start-chat kill-chat test
 
-test: chat start-chat
+test: kill-chat chat start-chat
 	./test.escript
 
 chat: chat.pony

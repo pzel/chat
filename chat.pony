@@ -6,7 +6,9 @@ class ChatMessage is Stringable
   let text : String
   let from : String
   new create(from': String, text' : String val) =>
-    text = text'.clone().>strip()
+    text = text'.clone()
+    // TODO: Strip newlines from the end
+    // without mangling utf8
     from = from'
 
   fun string() : String iso^ =>
@@ -59,10 +61,11 @@ class ChatConnectionNotify is TCPConnectionNotify
     msg: ChatMessage val) : None =>
       match (user_name, msg.from)
         | (let s : String, let s': String) if s != s' =>
-          conn.write(msg.string() + "\n")
+          conn.write(msg.string())
           conn.write(prompt)
       else
-          None
+        // This is our own message
+        None
       end
 
   fun ref accepted(conn: TCPConnection ref) =>

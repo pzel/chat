@@ -48,15 +48,16 @@ all_other_connections_will_receive_chats() ->
     Connect = fun(I) ->
                       {ok, P} = gen_tcp:connect("localhost", 9999, [{active, false}]),
                       ok = set_nickname(P, "User"++integer_to_list(I)),
-                      ok = inet:setopts(P, [{active, true}]),
+                      ok = inet:setopts(P, [{active, true}, binary]),
                       receive
-                          {tcp, _, "> [UserA]: aaa\n> "} -> Parent ! ok
+                          {tcp, _, <<"> [UserA]: 文章jaźń\n> "/utf8>>} -> Parent ! ok;
+                          {tcp, _, Other} -> ?fail(Other)
                           after 1000 -> ?fail({I, didnt_get_message})
                       end,
                       ok = gen_tcp:close(P)
               end,
     [ spawn(fun() -> Connect(I) end) || I <- lists:seq(1,100) ],
-    ok = type_message(UserASocket, "aaa"),
+    ok = type_message(UserASocket, <<"文章jaźń"/utf8>>),
     ok = receive_oks(100).
 
 
@@ -66,11 +67,9 @@ set_nickname(P, Nick) when is_list(Nick) ->
     {ok, "Welcome" ++_ } = gen_tcp:recv(P,0,1000),
     ok.
 
-type_message(P, Message) when is_list(Message) ->
+type_message(P, Message) when is_list(Message); is_binary(Message) ->
     {ok, "> "} = gen_tcp:recv(P,0,1000),
-    ok = gen_tcp:send(P, Message ++ "\n"),
-    ok.
-
+    ok = gen_tcp:send(P, [Message, "\n"]).
 
 receive_oks(0) -> ok;
 receive_oks(N) ->

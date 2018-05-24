@@ -44,12 +44,15 @@ class ChatConnectionNotify is TCPConnectionNotify
     stripped'
 
   fun ref register_with_router() =>
-    match _tcp_conn
-      | None => None
-      | let x : TCPConnection =>
-          _router.register(recover val
-            this~display_message_received(x, _prompt, _user_name)
+    match (_tcp_conn, _user_name)
+      | (None, _) => None
+      | (let tcp_conn : TCPConnection, let user_name: String) =>
+          _router.register(user_name,
+	  recover val
+            this~display_message_received(tcp_conn, _prompt, _user_name)
           end)
+      else
+        None
       end
 
   fun tag display_message_received(
@@ -71,27 +74,38 @@ class ChatConnectionNotify is TCPConnectionNotify
     _tcp_conn = conn
     conn.write("Input your nickname: ")
 
+  fun ref closed(conn: TCPConnection ref) =>
+    match _user_name
+      | let user_name : String => _router.unregister(user_name)
+    else
+      None
+    end
+
   fun ref connect_failed(conn: TCPConnection ref) => None
 
 actor Router
   let _env : Env
-  var _notifiers : Array[ {(ChatMessage val)} val ]
+  var _notifiers : Map[String val, {(ChatMessage val)} val ]
 
   new create(env: Env) =>
     _env = env
-    _notifiers = []
+    _notifiers = Map[String val, {(ChatMessage val)} val ].create(10)
 
   be route(msg: ChatMessage val) =>
     for fn in _notifiers.values() do
       fn(msg)
     end
     _env.out.print(" ".join(
-      [msg.string() ; " was sent to" ; _notifiers.size().string(); "users."
+      [msg.string() ; " was sent to"
+      _notifiers.size().string(); "users."
       ].values()))
 
-  be register(fn : {(ChatMessage val)} val) =>
-    _notifiers.push(fn)
+  be register(user_name: String, fn : {(ChatMessage val)} val) =>
+    _notifiers.update(user_name, fn)
 
+  be unregister(user_name: String) =>
+    try _notifiers.remove(user_name)? end
+    None
 
 class ChatTCPListenNotify is TCPListenNotify
   let _router : Router tag

@@ -37,7 +37,8 @@ class ChatConnectionNotify is TCPConnectionNotify
 
   fun ref accepted(conn: TCPConnection ref) =>
     _tcp_conn = conn
-    conn.write("Input your nickname: ")
+    var session = ChatSession(_router, conn)
+    _chat_session = session
 
   fun ref closed(conn: TCPConnection ref) =>
     with_chat_session({(session) =>
@@ -59,9 +60,13 @@ actor ChatSession
   let _prompt : String = "> "
   var _user_name : (String | None) = None
 
-  new create(router: Router tag, connection: TCPConnection tag) =>
+  new create(router: Router tag, conn: TCPConnection tag) =>
     _router = router
-    _tcp_conn = connection
+    _tcp_conn = conn
+    ask_for_username()
+
+  be ask_for_username() =>
+    _tcp_conn.write("Input your nickname: ")
 
   be process_user_input(user_input: String val) =>
     match _user_name

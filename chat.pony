@@ -172,10 +172,6 @@ actor Router
     for (user_name, session) in _notifiers.pairs() do
       if user_name != msg.from then session.handle_routed_message(msg) end
     end
-    _env.out.print(" ".join(
-      [msg.string() ; " was sent to"
-      _notifiers.size().string(); "users."
-      ].values()))
 
   be try_register(name: String,
                   on_register: Promise[RegistrationResult val],

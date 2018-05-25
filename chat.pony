@@ -1,12 +1,14 @@
 use "collections"
+use "itertools"
 use "debug"
 use "net"
+use "promises"
 
 class ChatMessage is Stringable
   let text : String
   let from : String
 
-	new create(from': String, text' : String val) =>
+	new val create(from': String, text' : String val) =>
     text = text'.clone().>strip()
     from = from'
 
@@ -21,6 +23,19 @@ class ChatConnectionNotify is TCPConnectionNotify
   new iso create(r: Router tag) =>
     _router = r
 
+  fun ref accepted(conn: TCPConnection ref) =>
+    _tcp_conn = conn
+    _chat_session = ChatSession(_router, conn)
+
+  fun ref closed(conn: TCPConnection ref) =>
+    match _chat_session
+      | None => None
+      | let session : ChatSession tag => session.connection_closed()
+    end
+
+  fun ref connect_failed(conn: TCPConnection ref) =>
+    None
+
   fun ref received(conn: TCPConnection ref,
 		   data: Array[U8] iso,
 		   times: USize) : Bool =>
@@ -32,33 +47,15 @@ class ChatConnectionNotify is TCPConnectionNotify
           session.process_user_input(user_input)
       | (let session: ChatSession tag, _) =>
           session.process_user_input(user_input)
-      end
-    true
-
-  fun ref accepted(conn: TCPConnection ref) =>
-    _tcp_conn = conn
-    var session = ChatSession(_router, conn)
-    _chat_session = session
-
-  fun ref closed(conn: TCPConnection ref) =>
-    with_chat_session({(session) =>
-      session.connection_closed()
-    })
-
-  fun ref connect_failed(conn: TCPConnection ref) =>
-    None
-
-  fun with_chat_session(fn : {(ChatSession tag)}) : None =>
-    match _chat_session
-      | None => None
-      | let session : ChatSession tag => fn(session)
     end
+    true
 
 actor ChatSession
   let _router : Router tag
   let _tcp_conn : TCPConnection tag
   let _prompt : String = "> "
   var _user_name : (String | None) = None
+  var _registration_pending : Bool = false
 
   new create(router: Router tag, conn: TCPConnection tag) =>
     _router = router
@@ -69,19 +66,49 @@ actor ChatSession
     _tcp_conn.write("Input your nickname: ")
 
   be process_user_input(user_input: String val) =>
-    match _user_name
-      | None =>
-        let name = set_username(user_input)
-        register_with_router(name)
-        _tcp_conn.write("Welcome, " + name + ".\n")
+    match (_user_name, _registration_pending)
+      | (None, false) =>
+        _registration_pending = true
+        register_with_router(user_input.clone().>strip())
+      | (let name : String, false) =>
         _tcp_conn.write(_prompt)
-      | let name : String =>
-        _tcp_conn.write(_prompt)
-        _router.route(recover val ChatMessage(name, user_input) end)
+        _router.route(ChatMessage(name, user_input))
+      | (_, true) =>
+        // This represents a race condition.
+        // The username hasn't yet been registered, but we're already
+        // getting data from the user.
+        // Should we queue up the messages that arrive,
+        // or signal an error and drop the connection?
+        /// Ingoring the messages is the worst of both worlds :)
+        None
     end
 
   be connection_closed() =>
     with_user_name({(n) => _router.unregister(n) })
+
+  be username_set(name: String) =>
+    _user_name = name
+
+  be username_taken(name: String) =>
+    _tcp_conn.write("[ERROR: Username already taken]\n")
+    _tcp_conn.dispose()
+
+  be welcome_user(name: String, user_list: Array[String] val) =>
+    _user_name = name
+    _registration_pending = false
+    _tcp_conn.write("Welcome, " + name + ".\n")
+    _tcp_conn.write(_prompt)
+
+  be handle_routed_message(msg: ChatMessage val) =>
+    match (_user_name, msg.from)
+      | (let s : String, let s': String) if s != s' =>
+        _tcp_conn.write(msg.string())
+        _tcp_conn.write("\n")
+        _tcp_conn.write(_prompt)
+      else
+        // This is our own message
+        None
+    end
 
   fun ref set_username(user_input: String val) : String val =>
     let stripped' = recover val user_input.clone().>strip() end
@@ -89,60 +116,76 @@ actor ChatSession
     stripped'
 
   fun ref register_with_router(name: String) =>
-    _router.register(name,
-      recover val
-        this~display_message_received(_tcp_conn, _prompt, _user_name)
-      end)
+    let on_register = Promise[RegistrationResult val]
+    on_register.next[None](recover iso this~handle_register_res(_tcp_conn) end)
+    _router.try_register(name, on_register, this)
 
-  fun tag display_message_received(
-    conn: TCPConnection tag,
-    prompt: String val,
-    user_name: (String | None),
-    msg: ChatMessage val) : None =>
-      match (user_name, msg.from)
-        | (let s : String, let s': String) if s != s' =>
-          conn.write(msg.string())
-          conn.write("\n")
-          conn.write(prompt)
-      else
-        // This is our own message
-      None
+  fun tag handle_register_res(conn: TCPConnection, res: RegistrationResult) =>
+    match res
+      | let t: UsernameTaken val => username_taken(t.name)
+      | let s: SuccessfulRegistration val => welcome_user(s.name, s.user_list)
     end
 
-    fun with_user_name(fn : {(String val)}): None =>
-      match _user_name
-        | (let n: String) => fn(n)
-        | None => None
-      end
+  fun with_user_name(fn : {(String val)}): None =>
+    match _user_name
+      | (let n: String) => fn(n)
+      | None => None
+    end
+
+class UsernameTaken
+  let name: String
+  new val create(name': String val) =>
+    name = name'
+
+class SuccessfulRegistration
+  let name: String
+  let user_list: Array[String] val
+  new val create(name': String, user_list': Array[String] val) =>
+    name = name'
+    user_list = user_list'
+
+type RegistrationResult is (UsernameTaken val | SuccessfulRegistration val)
 
 actor Router
   let _env : Env
-  var _notifiers : Map[String val, {(ChatMessage val)} val ]
+  var _notifiers : Map[String val, ChatSession tag]
 
   new create(env: Env) =>
     _env = env
-    _notifiers = Map[String val, {(ChatMessage val)} val ].create(10)
+    _notifiers = Map[String val, ChatSession tag].create(10)
+
+  fun ref user_list() : Array[String] val =>
+    var result : Array[String] iso = recover Array[String] end
+    for k in _notifiers.keys() do result.push(k) end
+    recover val result end
 
   be route(msg: ChatMessage val) =>
-    for fn in _notifiers.values() do
-      fn(msg)
+    for session in _notifiers.values() do
+      session.handle_routed_message(msg)
     end
     _env.out.print(" ".join(
       [msg.string() ; " was sent to"
       _notifiers.size().string(); "users."
       ].values()))
 
-  be register(user_name: String, fn : {(ChatMessage val)} val) =>
-    _notifiers.update(user_name, fn)
+  be try_register(name: String,
+                  on_register: Promise[RegistrationResult val],
+                  session: ChatSession tag) =>
+    if _notifiers.contains(name)
+      then on_register(UsernameTaken(name))
+      else
+        _notifiers.update(name, session)
+     on_register(SuccessfulRegistration(name, user_list()))
+    end
 
   be unregister(user_name: String) =>
     try _notifiers.remove(user_name)? end
     None
 
+
 class ChatTCPListenNotify is TCPListenNotify
   let _env: Env val
   let _router: Router tag
-
 
   new create(env: Env val, r : Router tag) =>
     _env = env

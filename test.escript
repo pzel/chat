@@ -7,6 +7,8 @@ main(_) ->
     ok = single_process_can_connect(),
     ok = multiple_processes_can_connect(),
     ok = a_new_connection_is_asked_for_nickname(),
+    ok = a_new_connection_gets_kicked_if_nickname_is_taken(),
+    % ok = a_new_connection_gets_list_of_users(),
     ok = a_new_connection_can_broadcast_chats(),
     ok = all_other_connections_will_receive_chats(),
     io:format("~ts~n", ["All tests passed"]),
@@ -34,11 +36,35 @@ a_new_connection_is_asked_for_nickname() ->
     {ok, "> "} = gen_tcp:recv(P,0,1000),
     ok.
 
+a_new_connection_gets_kicked_if_nickname_is_taken() ->
+    {ok, P1} = gen_tcp:connect("localhost", 9999, [{active, false}]),
+    ok = set_nickname(P1, "Mario"),
+
+    {ok, P2} = gen_tcp:connect("localhost", 9999, [{active, false}]),
+    {ok, "Input your nickname: "} = gen_tcp:recv(P2,0,1000),
+    ok = gen_tcp:send(P2, "Mario\n"),
+    {ok, "[ERROR: Username already taken]\n"} = gen_tcp:recv(P2,0,1000),
+    {error, closed} = gen_tcp:recv(P2,0,1000),
+    ok.
+
+%% a_new_connection_gets_list_of_users() ->
+%%     {ok, Foo} = gen_tcp:connect("localhost", 9999, [{active, false}]),
+%%     {ok, "Input your nickname: "} = gen_tcp:recv(Foo,0,1000),
+%%     ok = gen_tcp:send(Foo, "Foo\n"),
+%%     {ok, "Welcome, Foo.\n"} = gen_tcp:recv(Foo,0,1000),
+%%     {ok, "[Users in room: ]\n> \n"} = gen_tcp:recv(Foo,0,1000),
+
+%%     {ok, Bar} = gen_tcp:connect("localhost", 9999, [{active, false}]),
+%%     {ok, "Input your nickname: "} = gen_tcp:recv(Bar,0,1000),
+%%     ok = gen_tcp:send(Bar, "Bar\n"),
+%%     {ok, "Welcome, Bar.\n"} = gen_tcp:recv(Bar,0,1000),
+
+%%     ok.
+
 a_new_connection_can_broadcast_chats() ->
     {ok, P} = gen_tcp:connect("localhost", 9999, [{active, false}]),
-    ok = set_nickname(P, "Mario"),
+    ok = set_nickname(P, "Luigi"),
     ok = type_message(P, "hello everyone").
-
 
 all_other_connections_will_receive_chats() ->
     {ok, UserASocket} = gen_tcp:connect("localhost", 9999, [{active, false}]),
@@ -47,7 +73,7 @@ all_other_connections_will_receive_chats() ->
     Parent = self(),
     Connect = fun(I) ->
                       {ok, P} = gen_tcp:connect("localhost", 9999, [{active, false}]),
-                      ok = set_nickname(P, "User"++integer_to_list(I)),
+                      ok = set_nickname(P, "AUser"++integer_to_list(I)),
                       ok = inet:setopts(P, [{active, true}, binary]),
                       receive
                           {tcp, _, <<"> [UserA]: 文章jaźń\n> "/utf8>>} -> Parent ! ok;

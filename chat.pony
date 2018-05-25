@@ -117,13 +117,15 @@ actor ChatSession
     with_user_name({(n) => _router.unregister(n) })
 
   be username_taken(name: String) =>
-    _tcp_conn.write("[ERROR: Username already taken]\n")
+    _tcp_conn.write("[ERROR: Username " + name + " already taken]\n")
     _tcp_conn.dispose()
 
   be welcome_user(name: String, user_list: Array[String] val) =>
     _user_name = name
     _registration_pending = false
+    let users = recover val ",".join(user_list.values()) end
     _tcp_conn.write("Welcome, " + name + ".\n")
+    _tcp_conn.write("[Users: [" + users +"]]\n")
     _tcp_conn.write(_prompt)
 
   be handle_routed_message(msg: ChatMessage val) =>
@@ -169,8 +171,10 @@ actor Router
     recover val result end
 
   be route(msg: ChatMessage val) =>
-    for (user_name, session) in _notifiers.pairs() do
-      if user_name != msg.from then session.handle_routed_message(msg) end
+    if msg.text != "" then
+      for (user_name, session) in _notifiers.pairs() do
+        if user_name != msg.from then session.handle_routed_message(msg) end
+      end
     end
 
   be try_register(name: String,

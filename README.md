@@ -13,7 +13,7 @@ other clients.
 
  - [x] sending non-ascii text
  - [x] rejecting duplicate user names
- - [ ] getting a list of users
+ - [x] getting a list of users
  - [x] internal: clean up tags to dead sockets
  - [x] internal: wrap user connection with a dedicated actor
  - [ ] chat history

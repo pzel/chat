@@ -9,7 +9,7 @@ class ChatMessage is Stringable
   let text : String
   let from : String
 
-	new val create(from': String, text' : String val) =>
+  new val create(from': String, text' : String val) =>
     text = text'.clone().>strip()
     from = from'
 
@@ -163,10 +163,8 @@ actor Router
     _env = env
     _notifiers = Map[String val, ChatSession tag].create(10)
 
-  fun ref user_list() : Array[String] val =>
+  fun ref _user_list() : Array[String] val =>
     var result : Array[String] iso = recover Array[String] end
-    // TODO: Ask ponylang folks why Iter[] (  ).collect(result)
-    // doesn't work here.
     for k in _notifiers.keys() do result.push(k) end
     recover val result end
 
@@ -184,7 +182,7 @@ actor Router
       then on_register(UsernameTaken(name))
       else
         _notifiers.update(name, session)
-     on_register(SuccessfulRegistration(name, user_list()))
+        on_register(SuccessfulRegistration(name, _user_list()))
     end
 
   be unregister(user_name: String) =>

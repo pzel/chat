@@ -4,6 +4,7 @@ use "debug"
 use "net"
 use "promises"
 
+
 class ChatMessage is Stringable
   let text : String
   let from : String
@@ -14,6 +15,35 @@ class ChatMessage is Stringable
 
   fun string() : String iso^ =>
     String.join(["[" ; from ; "]: " ; text ].values())
+
+type RegistrationResult is (UsernameTaken val | SuccessfulRegistration val)
+
+class UsernameTaken
+  let name: String
+  new val create(name': String val) =>
+    name = name'
+
+class SuccessfulRegistration
+  let name: String
+  let user_list: Array[String] val
+  new val create(name': String, user_list': Array[String] val) =>
+    name = name'
+    user_list = user_list'
+
+class ChatTCPListenNotify is TCPListenNotify
+  let _env: Env val
+  let _router: Router tag
+
+  new create(env: Env val, r : Router tag) =>
+    _env = env
+    _router = r
+
+  fun ref connected(listen: TCPListener ref): TCPConnectionNotify iso^ =>
+    ChatConnectionNotify(_router)
+
+  fun ref not_listening(listen: TCPListener ref) =>
+    _env.out.print("NOT LISTENING")
+    None
 
 class ChatConnectionNotify is TCPConnectionNotify
   let _router : Router tag
@@ -86,9 +116,6 @@ actor ChatSession
   be connection_closed() =>
     with_user_name({(n) => _router.unregister(n) })
 
-  be username_set(name: String) =>
-    _user_name = name
-
   be username_taken(name: String) =>
     _tcp_conn.write("[ERROR: Username already taken]\n")
     _tcp_conn.dispose()
@@ -105,8 +132,7 @@ actor ChatSession
         _tcp_conn.write(msg.string())
         _tcp_conn.write("\n")
         _tcp_conn.write(_prompt)
-      else
-        // This is our own message
+      else // Message from ourselves
         None
     end
 
@@ -132,19 +158,6 @@ actor ChatSession
       | None => None
     end
 
-class UsernameTaken
-  let name: String
-  new val create(name': String val) =>
-    name = name'
-
-class SuccessfulRegistration
-  let name: String
-  let user_list: Array[String] val
-  new val create(name': String, user_list': Array[String] val) =>
-    name = name'
-    user_list = user_list'
-
-type RegistrationResult is (UsernameTaken val | SuccessfulRegistration val)
 
 actor Router
   let _env : Env
@@ -180,22 +193,6 @@ actor Router
 
   be unregister(user_name: String) =>
     try _notifiers.remove(user_name)? end
-    None
-
-
-class ChatTCPListenNotify is TCPListenNotify
-  let _env: Env val
-  let _router: Router tag
-
-  new create(env: Env val, r : Router tag) =>
-    _env = env
-    _router = r
-
-  fun ref connected(listen: TCPListener ref): TCPConnectionNotify iso^ =>
-    ChatConnectionNotify(_router)
-
-  fun ref not_listening(listen: TCPListener ref) =>
-    _env.out.print("NOT LISTENING")
     None
 
 actor Main

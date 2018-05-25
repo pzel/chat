@@ -74,15 +74,17 @@ all_other_connections_will_receive_chats() ->
     Connect = fun(I) ->
                       {ok, P} = gen_tcp:connect("localhost", 9999, [{active, false}]),
                       ok = set_nickname(P, "AUser"++integer_to_list(I)),
+                      Parent ! ok, % all connected
                       ok = inet:setopts(P, [{active, true}, binary]),
                       receive
                           {tcp, _, <<"> [UserA]: 文章jaźń\n> "/utf8>>} -> Parent ! ok;
-                          {tcp, _, Other} -> ?fail(Other)
+                          {tcp, _, Other} -> ?fail({unexpected_tcp, Other})
                           after 1000 -> ?fail({I, didnt_get_message})
                       end,
                       ok = gen_tcp:close(P)
               end,
     [ spawn(fun() -> Connect(I) end) || I <- lists:seq(1,100) ],
+    ok = receive_oks(100),
     ok = type_message(UserASocket, <<"文章jaźń"/utf8>>),
     ok = receive_oks(100).
 

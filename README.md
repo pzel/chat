@@ -12,8 +12,9 @@ other clients.
 # TODO:
 
  - [x] sending non-ascii text
+ - [x] rejecting duplicate user names
  - [ ] getting a list of users
- - [ ] internal: clean up tags to dead sockets
- - [ ] internal: wrap user connection with a dedicated actor
+ - [x] internal: clean up tags to dead sockets
+ - [x] internal: wrap user connection with a dedicated actor
  - [ ] chat history
  - [ ] one-to-one chat

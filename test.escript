@@ -10,6 +10,7 @@ main(_) ->
     ok = a_new_connection_gets_kicked_if_nickname_is_taken(),
     % ok = a_new_connection_gets_list_of_users(),
     ok = a_new_connection_can_broadcast_chats(),
+    ok = users_dont_receive_their_own_messages(),
     ok = all_other_connections_will_receive_chats(),
     io:format("~ts~n", ["All tests passed"]),
     erlang:halt(0).
@@ -65,6 +66,14 @@ a_new_connection_can_broadcast_chats() ->
     {ok, P} = gen_tcp:connect("localhost", 9999, [{active, false}]),
     ok = set_nickname(P, "Luigi"),
     ok = type_message(P, "hello everyone").
+
+users_dont_receive_their_own_messages() ->
+    {ok, P} = gen_tcp:connect("localhost", 9999, [{active, false}]),
+    ok = set_nickname(P, "Toad"),
+    ok = type_message(P, "hello everyone"),
+    ok = inet:setopts(P, [{active, true}]),
+    ok = receive {tcp,_, "> "} -> ok after 50 -> ?fail(no_prompt) end,
+    ok = receive A -> A after 50 -> ok end.
 
 all_other_connections_will_receive_chats() ->
     {ok, UserASocket} = gen_tcp:connect("localhost", 9999, [{active, false}]),

@@ -127,14 +127,9 @@ actor ChatSession
     _tcp_conn.write(_prompt)
 
   be handle_routed_message(msg: ChatMessage val) =>
-    match (_user_name, msg.from)
-      | (let s : String, let s': String) if s != s' =>
-        _tcp_conn.write(msg.string())
-        _tcp_conn.write("\n")
-        _tcp_conn.write(_prompt)
-      else // Message from ourselves
-        None
-    end
+    _tcp_conn.write(msg.string())
+    _tcp_conn.write("\n")
+    _tcp_conn.write(_prompt)
 
   fun ref set_username(user_input: String val) : String val =>
     let stripped' = recover val user_input.clone().>strip() end
@@ -158,7 +153,6 @@ actor ChatSession
       | None => None
     end
 
-
 actor Router
   let _env : Env
   var _notifiers : Map[String val, ChatSession tag]
@@ -169,12 +163,14 @@ actor Router
 
   fun ref user_list() : Array[String] val =>
     var result : Array[String] iso = recover Array[String] end
+    // TODO: Ask ponylang folks why Iter[] (  ).collect(result)
+    // doesn't work here.
     for k in _notifiers.keys() do result.push(k) end
     recover val result end
 
   be route(msg: ChatMessage val) =>
-    for session in _notifiers.values() do
-      session.handle_routed_message(msg)
+    for (user_name, session) in _notifiers.pairs() do
+      if user_name != msg.from then session.handle_routed_message(msg) end
     end
     _env.out.print(" ".join(
       [msg.string() ; " was sent to"
